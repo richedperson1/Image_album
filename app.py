@@ -17,7 +17,7 @@ class Album(db.Model):
     title = db.Column(db.String(255), nullable=False)
     year = db.Column(db.Integer, nullable=False)
     month = db.Column(db.Integer, nullable=False)
-    albumRelation = relationship('AlbumPhoto', secondary='album_photo', back_populates='albums', cascade='all, delete')
+    albumRelation = db.relationship('AlbumPhoto', secondary='album_photo', back_populates='albums', cascade='all, delete')
 
     def serialize(self):
         return {
@@ -33,7 +33,7 @@ class Photo(db.Model):
     title = db.Column(db.String(255))
     people = db.Column(db.JSON)
     location = db.Column(Geography(geometry_type='POINT', management=True))
-    photosRelation= relationship('AlbumPhoto', secondary='album_photo', back_populates='albums', cascade='all, delete')
+    photosRelation= db.relationship('AlbumPhoto', secondary='album_photo', back_populates='albums', cascade='all, delete')
     def serialize(self):
         return {
             'id': self.id,
@@ -51,6 +51,10 @@ class AlbumPhoto(db.Model):
     # photo_id = db.Column(db.Integer, db.ForeignKey('photo.id'), nullable=False)
     is_main = db.Column(db.Boolean, default=False)
 
+
+app.app_context().push()
+db.init_app(app)
+db.create_all()
 # CRUD APIs for albums
 @app.route('/albums', methods=['GET'])
 def get_albums():
@@ -101,11 +105,19 @@ def get_photos():
 
 @app.route('/photos/<int:photo_id>', methods=['GET'])
 def get_photo(photo_id):
-    photo = Photo.query.get(photo_id)
-    if not photo:
-        return jsonify({'error': 'Photo not found'}), 404
-    return jsonify(photo.serialize())
+    try:
+        photo = Photo.query.get(photo_id)
+        if not photo:
+            return jsonify({'error': 'Photo not found'}), 404
+        return jsonify(photo.serialize())
 
+    except NameError as e:
+        return jsonify({"result":f"Please enter proper name :  {e}"}),401
+    
+    except Exception as e:
+        return jsonify({"result":f"Please enter proper name :  {e}"}),404
+    
+    
 @app.route('/upload_photos', methods=['POST'])
 def upload_photo():
     """
@@ -113,20 +125,48 @@ def upload_photo():
     
     It might chance their is same name album occur multiple album will occur multiple times.
     """
+    
     try:
+        # First storing image data then storing the album data
+        photo = Photo(url=data['url'], title=data['title'], people=data.get('people'), location=data.get('location'))
+        db.session.add(photo)
+        db.session.commit()
+        
+        # This block of code is handling the process of uploading a photo to one or more albums.
+        
+        
         data = request.get_json()
         albumName = data.get("albumTitle")
         albumTitle = data.get("albumTitle")
         albumYear = data.get("albumYears")
         albumMonth = data.get("albumMonth")
         
-        photo = Photo(url=data['url'], title=data['title'], people=data.get('people'), location=data.get('location'))
-        db.session.add(photo)
+        album4uploadList = Album.query.filter(Album.title==albumTitle).filter(Album.year==albumYear).filter(Album.month==albumMonth).all()
+        
+        albumIds = []
+        
+        for albumObj in album4uploadList:
+            albumIds.append(albumObj.id)
+            
+        
+        for albumId in albumIds:
+            newAlbumPhotoEntry = AlbumPhoto(album_id = albumId,photo_id =  photo.id)
+            db.session.add(newAlbumPhotoEntry)
+            
         db.session.commit()
+        
         return jsonify({"result":"Image is uploaded successfully"}), 202
 
     except IntegrityError as e:
         return jsonify({"result":f"File not uploaded due integrity issue : {e}"}),502
+
+    except DatabaseError as e:
+        return jsonify({"result":f"File not uploaded due DatabaseError : {e}"}),502
+    
+    except Exception as e:
+        return jsonify({"result":f"File not uploaded due DatabaseError : {e}"}),502
+    
+    
 @app.route('/photos/<int:photo_id>', methods=['PUT'])
 def update_photo(photo_id):
     photo = Photo.query.get(photo_id)
