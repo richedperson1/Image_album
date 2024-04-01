@@ -11,6 +11,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///photos.db'  # Using SQLite da
 
 db = SQLAlchemy(app)
 
+
+with app.app_context():
+    db.create_all()
+
 # Define models
 class Album(db.Model):
     id = db.Column(db.Integer, primary_key=True,autoincrement = True)
@@ -32,7 +36,7 @@ class Photo(db.Model):
     url = db.Column(db.String(255), nullable=False)
     title = db.Column(db.String(255))
     people = db.Column(db.JSON)
-    location = db.Column(Geography(geometry_type='POINT', management=True))
+    location = db.Column(Geography(geometry_type='POINT'))
     photosRelation= db.relationship('AlbumPhoto', secondary='album_photo', back_populates='albums', cascade='all, delete')
     def serialize(self):
         return {
@@ -52,61 +56,80 @@ class AlbumPhoto(db.Model):
     is_main = db.Column(db.Boolean, default=False)
 
 
-app.app_context().push()
-db.init_app(app)
-db.create_all()
 # CRUD APIs for albums
-@app.route('/albums', methods=['GET'])
+@app.route('/albums_list', methods=['GET'])
 def get_albums():
-    albums = Album.query.all()
-    return jsonify([album.serialize() for album in albums])
+    try:
+        albums = Album.query.all()
+        return jsonify([album.serialize() for album in albums])
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
 
 @app.route('/albums/<int:album_id>', methods=['GET'])
 def get_album(album_id):
-    album = Album.query.get(album_id)
-    if not album:
-        return jsonify({'error': 'Album not found'}), 404
-    return jsonify(album.serialize())
-
-@app.route('/albums', methods=['POST'])
+    try:
+        
+        album = Album.query.filter(Album.id==album_id).first()
+        if not album:
+            return jsonify({'error': 'Album not found'}), 404
+        return jsonify(album.serialize())   
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
+    
+@app.route('/create_albums', methods=['POST'])
 def create_album():
-    data = request.get_json()
-    album = Album(title=data['title'], year=data['year'], month=data['month'])
-    db.session.add(album)
-    db.session.commit()
-    return jsonify(album.serialize()), 201
+    try:
+        data = request.json
+        album = Album(title=data['title'], year=data['year'], month=data['month'])
+        db.session.add(album)
+        db.session.commit()
+        return jsonify(album.serialize()), 201
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
 
-@app.route('/albums/<int:album_id>', methods=['PUT'])
-def update_album(album_id):
-    album = Album.query.get(album_id)
-    if not album:
-        return jsonify({'error': 'Album not found'}), 404
-    data = request.get_json()
-    album.title = data['title']
-    album.year = data['year']
-    album.month = data['month']
-    db.session.commit()
-    return jsonify(album.serialize())
+@app.route('/update_albums', methods=['PUT'])
+def update_album():
+    try:
+        data = request.json
+        album = Album.query.filter(Album.id==data["album_id"]).first()
+        if not album:
+            return jsonify({'error': 'Album not found'}), 404
+        data = request.get_json()
+        album.title = data['title']
+        album.year = data['year']
+        album.month = data['month']
+        db.session.commit()
+        return jsonify(album.serialize())
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
 
 @app.route('/albums/<int:album_id>', methods=['DELETE'])
 def delete_album(album_id):
-    album = Album.query.get(album_id)
-    if not album:
-        return jsonify({'error': 'Album not found'}), 404
-    db.session.delete(album)
-    db.session.commit()
-    return jsonify({'message': 'Album deleted successfully'})
-
+    try:
+        data = request.json
+        album = Album.query.filter(Album.id==data["album_id"]).first()
+        if not album:
+            return jsonify({'error': 'Album not found'}), 404
+        db.session.delete(album)
+        db.session.commit()
+        return jsonify({'message': 'Album deleted successfully'})
+    
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
 # CRUD APIs for photos
 @app.route('/get_photos', methods=['GET'])
 def get_photos():
-    photos = Photo.query.all()
-    return jsonify([photo.serialize() for photo in photos])
-
+    try:
+        photos = Photo.query.all()
+        return jsonify([photo.serialize() for photo in photos])
+    
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
+    
 @app.route('/photos/<int:photo_id>', methods=['GET'])
 def get_photo(photo_id):
     try:
-        photo = Photo.query.get(photo_id)
+        photo = Photo.query.filter(Photo.id == photo_id).first()
         if not photo:
             return jsonify({'error': 'Photo not found'}), 404
         return jsonify(photo.serialize())
@@ -128,6 +151,10 @@ def upload_photo():
     
     try:
         # First storing image data then storing the album data
+        
+        # This block of code is handling the process of uploading a photo to one or more albums in a
+        # application.
+        
         photo = Photo(url=data['url'], title=data['title'], people=data.get('people'), location=data.get('location'))
         db.session.add(photo)
         db.session.commit()
@@ -169,25 +196,38 @@ def upload_photo():
     
 @app.route('/photos/<int:photo_id>', methods=['PUT'])
 def update_photo(photo_id):
-    photo = Photo.query.get(photo_id)
-    if not photo:
-        return jsonify({'error': 'Photo not found'}), 404
-    data = request.get_json()
-    photo.title = data['title']
-    photo.people = data.get('people')
-    photo.location = data.get('location')
-    db.session.commit()
-    return jsonify(photo.serialize())
-
+    # This block of code defines a route in a application to update a specific photo in the
+    # database.
+    
+    try:
+        photo = Photo.query.filter(Photo.id == photo_id).first()
+        if not photo:
+            return jsonify({'error': 'Photo not found'}), 404
+        data = request.json
+        photo.title = data['title']
+        photo.people = data.get('people')
+        photo.location = data.get('location')
+        db.session.commit()
+        return jsonify(photo.serialize())
+    
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
+    
 @app.route('/photos/<int:photo_id>', methods=['DELETE'])
 def delete_photo(photo_id):
-    photo = Photo.query.get(photo_id)
-    if not photo:
-        return jsonify({'error': 'Photo not found'}), 404
-    db.session.delete(photo)
-    db.session.commit()
-    return jsonify({'message': 'Photo deleted successfully'})
-
+    try:
+        # This block of code defines a route in the application to delete a specific photo from the
+        # database. Here's what each step does:
+        
+        photo = Photo.query.get(photo_id)
+        if not photo:
+            return jsonify({'error': 'Photo not found'}), 404
+        db.session.delete(photo)
+        db.session.commit()
+        return jsonify({'message': 'Photo deleted successfully'})
+    
+    except Exception as err:
+        return jsonify({"result":"Result not found"})
 # Helper methods
 def paginate(query, page, per_page):
     return query.limit(per_page).offset((page - 1) * per_page)
